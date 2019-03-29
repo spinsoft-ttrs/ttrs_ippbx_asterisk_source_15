@@ -1439,6 +1439,9 @@ static const char * const pm_family = "Queue/PersistentMembers";
 /*! \brief queues.conf [general] option */
 static int queue_persistent_members = 0;
 
+/*! \brief queues.conf [general] option */ 
+static int use_exsound = 0; 
+
 /*! \brief queues.conf per-queue weight option */
 static int use_weight = 0;
 
@@ -1670,6 +1673,18 @@ struct call_queue {
 		AST_STRING_FIELD(sound_callerannounce);
 		/*! Sound file: "Hold time" (def. queue-reporthold) */
 		AST_STRING_FIELD(sound_reporthold);
+		/*! Extra Sound file: Your call is now first in line (def. exsound_first) */ 
+ 		AST_STRING_FIELD(exsound_first); 
+ 		/*! Extra Sound file: Your call is now second in line (def. exsound_second) */ 
+ 		AST_STRING_FIELD(exsound_second); 
+ 		/*! Extra Sound file: Your call is now third in line (def. exsound_third) */ 
+ 		AST_STRING_FIELD(exsound_third); 
+ 		/*! Extra Sound file: Your call is now fourth in line (def. exsound_fourth) */ 
+ 		AST_STRING_FIELD(exsound_fourth); 
+ 		/*! Extra Sound file: Your call is now fifth in line (def. exsound_fifth) */ 
+ 		AST_STRING_FIELD(exsound_fifth); 
+ 		/*! Extra Sound file: Your call is now more than fifth in line (def. exsound_more_than_fifth) */ 
+ 		AST_STRING_FIELD(exsound_more_than_fifth); 
 	);
 	/*! Sound files: Custom announce, no default */
 	struct ast_str *sound_periodicannounce[MAX_PERIODIC_ANNOUNCEMENTS];
@@ -2787,6 +2802,13 @@ static void init_queue(struct call_queue *q)
 	ast_string_field_set(q, sound_thanks, "queue-thankyou");
 	ast_string_field_set(q, sound_reporthold, "queue-reporthold");
 
+	ast_string_field_set(q, exsound_first, "exsound_first"); 
+ 	ast_string_field_set(q, exsound_second, "exsound_second"); 
+ 	ast_string_field_set(q, exsound_third, "exsound_third"); 
+ 	ast_string_field_set(q, exsound_fourth, "exsound_fourth"); 
+ 	ast_string_field_set(q, exsound_fifth, "exsound_fifth"); 
+ 	ast_string_field_set(q, exsound_more_than_fifth, "exsound_more_than_fifth"); 
+
 	if (!q->sound_periodicannounce[0]) {
 		q->sound_periodicannounce[0] = ast_str_create(32);
 	}
@@ -3150,6 +3172,18 @@ static void queue_set_param(struct call_queue *q, const char *param, const char 
 		ast_string_field_set(q, sound_reporthold, val);
 	} else if (!strcasecmp(param, "announce-frequency")) {
 		q->announcefrequency = atoi(val);
+	} else if (!strcasecmp(param, "exsound_first")) { 
+		ast_string_field_set(q, exsound_first, val); 
+ 	} else if (!strcasecmp(param, "exsound_second")) { 
+ 		ast_string_field_set(q, exsound_second, val); 
+ 	} else if (!strcasecmp(param, "exsound_third")) { 
+ 		ast_string_field_set(q, exsound_third, val); 
+ 	} else if (!strcasecmp(param, "exsound_fourth")) { 
+ 		ast_string_field_set(q, exsound_fourth, val); 
+ 	} else if (!strcasecmp(param, "exsound_fifth")) { 
+ 		ast_string_field_set(q, exsound_fifth, val); 
+ 	} else if (!strcasecmp(param, "exsound_more_than_fifth")) { 
+ 		ast_string_field_set(q, exsound_more_than_fifth, val); 
 	} else if (!strcasecmp(param, "announce-to-first-user")) {
 		q->announce_to_first_user = ast_true(val);
 	} else if (!strcasecmp(param, "min-announce-frequency")) {
@@ -3852,22 +3886,73 @@ static int play_file(struct ast_channel *chan, const char *filename)
 {
 	int res;
 
+	ast_verb(10, "[debug] Play file 1 \n"); 
+
 	if (ast_strlen_zero(filename)) {
 		return 0;
 	}
+
+	ast_verb(10, "[debug] Play file 2 \n"); 
 
 	if (!ast_fileexists(filename, NULL, ast_channel_language(chan))) {
 		return 0;
 	}
 
+	ast_verb(10, "[debug] Play file 3 \n"); 
+
 	ast_stopstream(chan);
+
+	ast_verb(10, "[debug] Play file 4 \n"); 
 
 	res = ast_streamfile(chan, filename, ast_channel_language(chan));
 	if (!res) {
+		ast_verb(10, "[debug] Play file 5 \n"); 
 		res = ast_waitstream(chan, AST_DIGIT_ANY);
 	}
 
+	ast_verb(10, "[debug] Play file 6 \n"); 
+
 	ast_stopstream(chan);
+
+	ast_verb(10, "[debug] Play file 7 \n"); 
+
+	return res;
+}
+
+static int play_file_exsound(struct ast_channel *chan, const char *filename)
+{
+	int res;
+
+	ast_verb(10, "[debug] Play file 1 \n"); 
+
+	if (ast_strlen_zero(filename)) {
+		return 0;
+	}
+
+	ast_verb(10, "[debug] Play file 2 \n"); 
+
+	if (!ast_fileexists(filename, NULL, ast_channel_language(chan))) {
+		return 0;
+	}
+
+	ast_verb(10, "[debug] Play file 3 \n"); 
+
+	ast_stopstream(chan);
+
+	ast_verb(10, "[debug] Play file 4 \n"); 
+
+	res = ast_streamfile(chan, filename, ast_channel_language(chan));
+	if (!res) {
+		ast_verb(10, "[debug] Play file 5 \n"); 
+		res = ast_waitstream_exsound(chan, AST_DIGIT_ANY);
+		ast_verb(10, "[debug] :RES %d \n",res); 
+	}
+
+	ast_verb(10, "[debug] Play file 6 \n"); 
+
+	ast_stopstream(chan);
+
+	ast_verb(10, "[debug] Play file 7 \n"); 
 
 	return res;
 }
@@ -3919,27 +4004,37 @@ static int say_position(struct queue_ent *qe, int ringing)
 	int say_thanks = 1;
 	time_t now;
 
+	ast_verb(10, "[debug] 1 \n");
+
 	/* Let minannouncefrequency seconds pass between the start of each position announcement */
 	time(&now);
 	if ((now - qe->last_pos) < qe->parent->minannouncefrequency) {
 		return 0;
 	}
 
+	ast_verb(10, "[debug] 2 \n");
+
 	/* If either our position has changed, or we are over the freq timer, say position */
 	if ((qe->last_pos_said == qe->pos) && ((now - qe->last_pos) < qe->parent->announcefrequency)) {
 		return 0;
 	}
+
+	ast_verb(10, "[debug] 3 \n");
 
 	/* Only announce if the caller's queue position has improved since last time */
 	if (qe->parent->announceposition_only_up && qe->last_pos_said <= qe->pos) {
 		return 0;
 	}
 
+	ast_verb(10, "[debug] 4 \n");
+
 	if (ringing) {
 		ast_indicate(qe->chan,-1);
 	} else {
 		ast_moh_stop(qe->chan);
 	}
+
+	ast_verb(10, "[debug] 5 \n");
 
 	if (qe->parent->announceposition == ANNOUNCEPOSITION_YES ||
 		qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN ||
@@ -3948,47 +4043,103 @@ static int say_position(struct queue_ent *qe, int ringing)
 			announceposition = 1;
 	}
 
+	ast_verb(10, "[debug] queue use_exsound=%d\n", use_exsound); 
 
 	if (announceposition == 1) {
-		/* Say we're next, if we are */
-		if (qe->pos == 1) {
-			res = play_file(qe->chan, qe->parent->sound_next);
+	    if(use_exsound){
+			ast_verb(10, "[debug] use_exsound OK \n"); 
+			switch(qe->pos){
+				case 1: 
+					ast_verb(10, "[debug] case 1 \n"); 
+					res = play_file_exsound(qe->chan, qe->parent->exsound_first);
+					//res = play_file_exsound(qe->chan, qe->parent->sound_thereare);
+					ast_verb(10, "[debug] case 1 Exit \n"); 
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_first);
+					say_thanks = 0;
+					break;
+				case 2: 
+					ast_verb(10, "[debug] case 2 \n"); 
+					res = play_file_exsound(qe->chan, qe->parent->exsound_second);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_second);
+					say_thanks = 0;
+					break;
+				case 3: 
+					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
+					//res = play_file(qe->chan, qe->parent->exsound_third);
+					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_third);
+					say_thanks = 0;*/
+					break;
+				case 4: 
+					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
+					//res = play_file(qe->chan, qe->parent->exsound_fourth);
+					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_fourth);
+					say_thanks = 0;*/
+					break;
+				case 5: 
+					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
+					//res = play_file(qe->chan, qe->parent->exsound_fifth);
+					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_fifth);
+					say_thanks = 0;*/
+					break;
+				default: 
+					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
+					//res = play_file(qe->chan, qe->parent->exsound_more_than_fifth);
+					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_more_than_fifth);
+					say_thanks = 0;*/
+			}
+			ast_verb(10, "[debug] use_exsound Exit switch\n"); 
 			if (res) {
-				goto playout;
+					ast_verb(10, "[debug] playout\n"); 
+					goto playout;
 			}
 			goto posout;
-		} else {
-			if (qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN && qe->pos > qe->parent->announcepositionlimit){
-				/* More than Case*/
-				res = play_file(qe->chan, qe->parent->queue_quantity1);
+		}else{
+			/* Say we're next, if we are */
+			if (qe->pos == 1) {
+				res = play_file(qe->chan, qe->parent->sound_next);
 				if (res) {
 					goto playout;
 				}
-				res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL); /* Needs gender */
-				if (res) {
-					goto playout;
-				}
+				goto posout;
 			} else {
-				/* Normal Case */
-				res = play_file(qe->chan, qe->parent->sound_thereare);
-				if (res) {
-					goto playout;
+				if (qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN && qe->pos > qe->parent->announcepositionlimit){
+					/* More than Case*/
+					res = play_file(qe->chan, qe->parent->queue_quantity1);
+					if (res) {
+						goto playout;
+					}
+					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL); /* Needs gender */
+					if (res) {
+						goto playout;
+					}
+				} else {
+					/* Normal Case */
+					res = play_file(qe->chan, qe->parent->sound_thereare);
+					if (res) {
+						goto playout;
+					}
+					res = ast_say_number(qe->chan, qe->pos, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL); /* Needs gender */
+					if (res) {
+						goto playout;
+					}
 				}
-				res = ast_say_number(qe->chan, qe->pos, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL); /* Needs gender */
-				if (res) {
-					goto playout;
-				}
-			}
-			if (qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN && qe->pos > qe->parent->announcepositionlimit){
-				/* More than Case*/
-				res = play_file(qe->chan, qe->parent->queue_quantity2);
-				if (res) {
-					goto playout;
-				}
-			} else {
-				res = play_file(qe->chan, qe->parent->sound_calls);
-				if (res) {
-					goto playout;
+				if (qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN && qe->pos > qe->parent->announcepositionlimit){
+					/* More than Case*/
+					res = play_file(qe->chan, qe->parent->queue_quantity2);
+					if (res) {
+						goto playout;
+					}
+				} else {
+					res = play_file(qe->chan, qe->parent->sound_calls);
+					if (res) {
+						goto playout;
+					}
 				}
 			}
 		}
@@ -9051,6 +9202,10 @@ static void queue_set_global_params(struct ast_config *cfg)
 	queue_persistent_members = 0;
 	if ((general_val = ast_variable_retrieve(cfg, "general", "persistentmembers"))) {
 		queue_persistent_members = ast_true(general_val);
+	}
+	use_exsound = 0;
+	if ((general_val = ast_variable_retrieve(cfg, "general", "use-exsound"))) {
+		use_exsound = ast_true(general_val);
 	}
 	autofill_default = 0;
 	if ((general_val = ast_variable_retrieve(cfg, "general", "autofill"))) {
