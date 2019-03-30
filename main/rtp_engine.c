@@ -3618,10 +3618,11 @@ int ast_rtp_engine_init(void)
 	 * Dynamic payload types - Even when dynamically assigning them we'll fall
 	 * back to using the statically declared values as the default number.
 	 */
-	add_static_payload(96, ast_format_slin192, 0);
+	add_static_payload(98, ast_format_slin192, 0);
 	add_static_payload(97, ast_format_ilbc, 0);
 
 	add_static_payload(99, ast_format_h264, 0);
+	add_static_payload(96, ast_format_h264, 0);
 	add_static_payload(100, ast_format_vp8, 0);
 	add_static_payload(101, NULL, AST_RTP_DTMF);
 	add_static_payload(102, ast_format_siren7, 0);
