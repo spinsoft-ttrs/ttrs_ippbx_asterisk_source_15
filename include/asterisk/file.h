@@ -182,6 +182,8 @@ int ast_file_read_dirs(const char *dir_name, ast_file_on_file on_file, void *obj
  */
 int ast_waitstream(struct ast_channel *c, const char *breakon);
 
+int ast_waitstream_exsound(struct ast_channel *c, const char *breakon);
+
 /*!
  * \brief Waits for a stream to stop or digit matching a valid one digit exten to be pressed
  * \param c channel to waitstream on

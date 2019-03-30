@@ -833,7 +833,7 @@ struct ast_filestream *ast_openvstream(struct ast_channel *chan, const char *fil
 		struct ast_format *format = ast_format_cap_get_format(tmp_cap, i);
 
 		if ((ast_format_get_type(format) != AST_MEDIA_TYPE_VIDEO) ||
-			!ast_format_cap_iscompatible(nativeformats, tmp_cap)) {
+			ast_format_cap_iscompatible_format(nativeformats, format) == AST_FORMAT_CMP_NOT_EQUAL) {
 			ao2_ref(format, -1);
 			continue;
 		}
@@ -1266,7 +1266,7 @@ int ast_streamfile(struct ast_channel *chan, const char *filename, const char *p
 
 	vfs = ast_openvstream(chan, filename, preflang);
 	if (vfs) {
-		ast_debug(1, "Ooh, found a video stream, too, format %s\n", ast_format_get_name(vfs->fmt->format));
+		ast_verb(1, "Ooh, found a video stream, too, format %s\n", ast_format_get_name(vfs->fmt->format));
 	}
 
 	if (ast_test_flag(ast_channel_flags(chan), AST_FLAG_MASQ_NOSTREAM))
@@ -1703,6 +1703,191 @@ static int waitstream_core(struct ast_channel *c,
 	return (err || ast_channel_softhangup_internal_flag(c)) ? -1 : 0;
 }
 
+static int waitstream_core_exsound(struct ast_channel *c,
+	const char *breakon,
+	const char *forward,
+	const char *reverse,
+	int skip_ms,
+	int audiofd,
+	int cmdfd,
+	const char *context,
+	ast_waitstream_fr_cb cb)
+{
+	const char *orig_chan_name = NULL;
+
+	int err = 0;
+
+	if (!breakon)
+		breakon = "";
+	if (!forward)
+		forward = "";
+	if (!reverse)
+		reverse = "";
+
+	ast_verb(10, "[debug] waitstream_core exsound \n");
+
+	/* Switch the channel to end DTMF frame only. waitstream_core doesn't care about the start of DTMF. */
+	ast_channel_set_flag(c, AST_FLAG_END_DTMF_ONLY);
+
+	if (ast_test_flag(ast_channel_flags(c), AST_FLAG_MASQ_NOSTREAM))
+		orig_chan_name = ast_strdupa(ast_channel_name(c));
+
+	if (ast_channel_stream(c) && cb) {
+		long ms_len = ast_tellstream(ast_channel_stream(c)) / (ast_format_get_sample_rate(ast_channel_stream(c)->fmt->format) / 1000);
+		cb(c, ms_len, AST_WAITSTREAM_CB_START);
+	}
+
+	while (ast_channel_stream(c)) {
+		int res;
+		int ms;
+
+		if (orig_chan_name && strcasecmp(orig_chan_name, ast_channel_name(c))) {
+			ast_stopstream(c);
+			err = 1;
+			break;
+		}
+		ms = -1;
+
+		//ast_verb(10, "[debug]  audiofd: %d, cmdfd: %d skip_ms: %d \n",audiofd, cmdfd, skip_ms);
+
+		if (ms < 0 && !ast_channel_timingfunc(c)) {
+			ast_stopstream(c);
+			break;
+		}
+		if (ms < 0)
+			ms = 1000;
+		if (cmdfd < 0) {
+			res = ast_waitfor(c, ms);
+			if (res < 0) {
+				ast_log(LOG_WARNING, "Select failed (%s)\n", strerror(errno));
+				ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+				return res;
+			}
+		} else {
+			int outfd;
+			struct ast_channel *rchan = ast_waitfor_nandfds(&c, 1, &cmdfd, (cmdfd > -1) ? 1 : 0, NULL, &outfd, &ms);
+			if (!rchan && (outfd < 0) && (ms)) {
+				/* Continue */
+				if (errno == EINTR)
+					continue;
+				ast_log(LOG_WARNING, "Wait failed (%s)\n", strerror(errno));
+				ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+				return -1;
+			} else if (outfd > -1) { /* this requires cmdfd set */
+				/* The FD we were watching has something waiting */
+				ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+				return 1;
+			}
+			/* if rchan is set, it is 'c' */
+			res = rchan ? 1 : 0; /* map into 'res' values */
+		}
+		if (res > 0) {
+			struct ast_frame *fr = ast_read(c);
+			if (!fr) {
+				ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+				return -1;
+			}
+			switch (fr->frametype) {
+			case AST_FRAME_DTMF_END:
+				if (context) {
+					const char exten[2] = { fr->subclass.integer, '\0' };
+					if (ast_exists_extension(c, context, exten, 1,
+						S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, NULL))) {
+						res = fr->subclass.integer;
+						ast_frfree(fr);
+						ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+						return res;
+					}
+				} else {
+					res = fr->subclass.integer;
+					if (strchr(forward, res)) {
+						waitstream_control(c, AST_WAITSTREAM_CB_FASTFORWARD, cb, skip_ms);
+					} else if (strchr(reverse, res)) {
+						waitstream_control(c, AST_WAITSTREAM_CB_REWIND, cb, skip_ms);
+					} else if (strchr(breakon, res)) {
+						ast_test_suite_event_notify("PLAYBACK","Channel: %s\r\n"
+							"Control: %s\r\n",
+							ast_channel_name(c),
+							"Break");
+
+						ast_frfree(fr);
+						ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+						return res;
+					}
+				}
+				break;
+			case AST_FRAME_CONTROL:
+				switch (fr->subclass.integer) {
+				case AST_CONTROL_STREAM_STOP:
+				case AST_CONTROL_STREAM_SUSPEND:
+				case AST_CONTROL_STREAM_RESTART:
+					/* Fall-through and break out */
+					ast_test_suite_event_notify("PLAYBACK","Channel: %s\r\n"
+						"Control: %s\r\n",
+						ast_channel_name(c),
+						"Break");
+					res = fr->subclass.integer;
+					ast_frfree(fr);
+					ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+					return res;
+				case AST_CONTROL_STREAM_REVERSE:
+					if (!skip_ms) {
+						skip_ms = 3000;
+					}
+					waitstream_control(c, AST_WAITSTREAM_CB_REWIND, cb, skip_ms);
+					break;
+				case AST_CONTROL_STREAM_FORWARD:
+					if (!skip_ms) {
+						skip_ms = 3000;
+					}
+					waitstream_control(c, AST_WAITSTREAM_CB_FASTFORWARD, cb, skip_ms);
+					break;
+				case AST_CONTROL_HANGUP:
+				case AST_CONTROL_BUSY:
+				case AST_CONTROL_CONGESTION:
+					ast_frfree(fr);
+					ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+					return -1;
+				case AST_CONTROL_RINGING:
+				case AST_CONTROL_ANSWER:
+				case AST_CONTROL_VIDUPDATE:
+				case AST_CONTROL_SRCUPDATE:
+				case AST_CONTROL_SRCCHANGE:
+				case AST_CONTROL_HOLD:
+				case AST_CONTROL_UNHOLD:
+				case AST_CONTROL_CONNECTED_LINE:
+				case AST_CONTROL_REDIRECTING:
+				case AST_CONTROL_AOC:
+				case AST_CONTROL_UPDATE_RTP_PEER:
+				case AST_CONTROL_PVT_CAUSE_CODE:
+				case -1:
+					/* Unimportant */
+					break;
+				default:
+					ast_log(LOG_WARNING, "Unexpected control subclass '%d'\n", fr->subclass.integer);
+				}
+				break;
+			case AST_FRAME_VOICE:
+				/* Write audio if appropriate */
+				if (audiofd > -1) {
+					if (write(audiofd, fr->data.ptr, fr->datalen) < 0) {
+						ast_log(LOG_WARNING, "write() failed: %s\n", strerror(errno));
+					}
+				}
+			default:
+				/* Ignore all others */
+				break;
+			}
+			ast_frfree(fr);
+		}
+		ast_sched_runq(ast_channel_sched(c));
+	}
+
+	ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
+
+	return (err || ast_channel_softhangup_internal_flag(c)) ? -1 : 0;
+}
+
 int ast_waitstream_fr_w_cb(struct ast_channel *c,
 	const char *breakon,
 	const char *forward,
@@ -1750,6 +1935,15 @@ int ast_waitstream(struct ast_channel *c, const char *breakon)
 	int res;
 
 	res = waitstream_core(c, breakon, NULL, NULL, 0, -1, -1, NULL, NULL /* no callback */);
+
+	return sanitize_waitstream_return(res);
+}
+
+int ast_waitstream_exsound(struct ast_channel *c, const char *breakon)
+{
+	int res;
+
+	res = waitstream_core_exsound(c, breakon, NULL, NULL, 0, -1, -1, NULL, NULL /* no callback */);
 
 	return sanitize_waitstream_return(res);
 }
