@@ -457,6 +457,48 @@
 			<ref type="function">QUEUE_MEMBER_PENALTY</ref>
 		</see-also>
 	</application>
+	<application name="ResetLastcallQueueMember" language="en_US">
+		<synopsis>
+			Reset lastcall a queue member.
+		</synopsis>
+		<syntax>
+			<parameter name="queuename" />
+			<parameter name="interface" required="true" />
+			<parameter name="options" />
+			<parameter name="reason">
+				<para>Is used to add extra information to the appropriate queue_log entries and manager events.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Rest Last call a queue member.</para>
+			<para>This application sets the following channel variable upon completion:</para>
+			<variablelist>
+				<variable name="SQMSTATUS">
+					<para>The status of the attempt to pause a queue member as a text string.</para>
+					<value name="RESET" />
+					<value name="NOTFOUND" />
+				</variable>
+			</variablelist>
+			<para>Example: ResetLastcallQueueMember(,SIP/3000)</para>
+		</description>
+		<see-also>
+			<ref type="application">Queue</ref>
+			<ref type="application">QueueLog</ref>
+			<ref type="application">AddQueueMember</ref>
+			<ref type="application">RemoveQueueMember</ref>
+			<ref type="application">PauseQueueMember</ref>
+			<ref type="application">UnpauseQueueMember</ref>
+            <ref type="application">ResetLastcallQueueMember</ref>
+			<ref type="function">QUEUE_VARIABLES</ref>
+			<ref type="function">QUEUE_MEMBER</ref>
+			<ref type="function">QUEUE_MEMBER_COUNT</ref>
+			<ref type="function">QUEUE_EXISTS</ref>
+			<ref type="function">QUEUE_GET_CHANNEL</ref>
+			<ref type="function">QUEUE_WAITING_COUNT</ref>
+			<ref type="function">QUEUE_MEMBER_LIST</ref>
+			<ref type="function">QUEUE_MEMBER_PENALTY</ref>
+		</see-also>
+	</application>
 	<application name="QueueLog" language="en_US">
 		<synopsis>
 			Writes to the queue_log file.
@@ -1428,6 +1470,8 @@ static char *app_rqm = "RemoveQueueMember" ;
 static char *app_pqm = "PauseQueueMember" ;
 
 static char *app_upqm = "UnpauseQueueMember" ;
+
+static char *app_sqm = "ResetLastcallQueueMember" ; //Add reset lastcall 9'TON
 
 static char *app_ql = "QueueLog" ;
 
@@ -7983,6 +8027,45 @@ static int upqm_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
+//Add ResetLastcallQueueMember 9'TON
+/*! \brief ResetLastcallQueueMember application */
+static int sqm_exec(struct ast_channel *chan, const char *data)
+{
+	char *parse;
+	AST_DECLARE_APP_ARGS(args,
+		AST_APP_ARG(queuename);
+		AST_APP_ARG(interface);
+		AST_APP_ARG(options);
+		AST_APP_ARG(reason);
+	);
+
+	if (ast_strlen_zero(data)) {
+		ast_log(LOG_WARNING, "ResetLastcallQueueMember requires an argument ([queuename],interface[,options][,reason])\n");
+		return -1;
+	}
+
+	parse = ast_strdupa(data);
+
+	AST_STANDARD_APP_ARGS(args, parse);
+
+	if (ast_strlen_zero(args.interface)) {
+		ast_log(LOG_WARNING, "Missing interface argument to ResetLastcallQueueMember ([queuename],interface[,options[,reason]])\n");
+		return -1;
+	}
+
+	ast_log(LOG_NOTICE, "ResetLastcallQueueMember Testing \n");
+
+	// if (set_member_paused(args.queuename, args.interface, args.reason, 1)) {
+	// 	ast_log(LOG_WARNING, "Attempt to pause interface %s, not found\n", args.interface);
+	// 	pbx_builtin_setvar_helper(chan, "PQMSTATUS", "NOTFOUND");
+	// 	return 0;
+	// }
+
+	// pbx_builtin_setvar_helper(chan, "SQMSTATUS", "PAUSED");
+
+	return 0;
+}
+
 /*! \brief RemoveQueueMember application */
 static int rqm_exec(struct ast_channel *chan, const char *data)
 {
@@ -11236,6 +11319,7 @@ static int unload_module(void)
 	ast_unregister_application(app_rqm);
 	ast_unregister_application(app_pqm);
 	ast_unregister_application(app_upqm);
+	ast_unregister_application(app_sqm);//Add reset lastcall
 	ast_unregister_application(app_ql);
 	ast_unregister_application(app_qupd);
 	ast_unregister_application(app);
@@ -11330,6 +11414,7 @@ static int load_module(void)
 	err |= ast_register_application_xml(app_rqm, rqm_exec);
 	err |= ast_register_application_xml(app_pqm, pqm_exec);
 	err |= ast_register_application_xml(app_upqm, upqm_exec);
+	err |= ast_register_application_xml(app_sqm, sqm_exec);//Add reset lastcall
 	err |= ast_register_application_xml(app_ql, ql_exec);
 	err |= ast_register_application_xml(app_qupd, qupd_exec);
 	err |= ast_manager_register_xml("QueueStatus", 0, manager_queues_status);
