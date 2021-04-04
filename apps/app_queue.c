@@ -1804,6 +1804,10 @@ static struct ao2_container *queues;
 static void update_realtime_members(struct call_queue *q);
 static struct member *interface_exists(struct call_queue *q, const char *interface);
 static int set_member_paused(const char *queuename, const char *interface, const char *reason, int paused);
+
+//Add internal function reset member last call 9'TON
+static int set_member_reset_lastcall(const char *queuename, const char *interface);
+
 static int update_queue(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
 
 static struct member *find_member_by_queuename_and_interface(const char *queuename, const char *interface);
@@ -7664,6 +7668,57 @@ static int set_member_paused(const char *queuename, const char *interface, const
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
 
+//Add internal function reset member last call 9'TON
+
+/*!
+ * \internal
+ * \brief Reset member last call .
+ * \param[in] queuename If specified, only act on a member if it belongs to this queue
+ * \param[in] interface Interface of queue member(s) having priority set.
+ */
+
+static int set_member_reset_lastcall(const char *queuename, const char *interface)
+{
+	int found = 0;
+	struct call_queue *q;
+	struct ao2_iterator queue_iter;
+
+	queue_iter = ao2_iterator_init(queues, 0);
+	while ((q = ao2_t_iterator_next(&queue_iter, "Iterate over queues"))) {
+		ao2_lock(q);
+		if (ast_strlen_zero(queuename) || !strcasecmp(q->name, queuename)) {
+			struct member *mem;
+
+			if ((mem = interface_exists(q, interface))) {
+				++found;
+				if (found == 1
+					&& ast_strlen_zero(queuename)) {
+					/*
+					 * XXX In all other cases, we use the queue name,
+					 * but since this affects all queues, we cannot.
+					 */
+				}
+
+				update_queue(q, mem, mem->callcompletedinsl, mem->starttime);
+				ao2_ref(mem, -1);
+			}
+
+			if (!ast_strlen_zero(queuename)) {
+				ao2_unlock(q);
+				queue_t_unref(q, "Done with iterator");
+				break;
+			}
+		}
+
+		ao2_unlock(q);
+		queue_t_unref(q, "Done with iterator");
+	}
+	ao2_iterator_destroy(&queue_iter);
+
+	return found ? RESULT_SUCCESS : RESULT_FAILURE;
+}
+
+
 /*!
  * \internal
  * \brief helper function for set_member_penalty - given a queue, sets all member penalties with the interface
@@ -8053,15 +8108,13 @@ static int sqm_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	ast_log(LOG_NOTICE, "ResetLastcallQueueMember Testing \n");
+	if (set_member_reset_lastcall(args.queuename, args.interface)) {
+		ast_log(LOG_WARNING, "Attempt to reset last call interface %s, not found\n", args.interface);
+		pbx_builtin_setvar_helper(chan, "SQMSTATUS", "NOTFOUND");
+		return 0;
+	}
 
-	// if (set_member_paused(args.queuename, args.interface, args.reason, 1)) {
-	// 	ast_log(LOG_WARNING, "Attempt to pause interface %s, not found\n", args.interface);
-	// 	pbx_builtin_setvar_helper(chan, "PQMSTATUS", "NOTFOUND");
-	// 	return 0;
-	// }
-
-	// pbx_builtin_setvar_helper(chan, "SQMSTATUS", "PAUSED");
+	pbx_builtin_setvar_helper(chan, "SQMSTATUS", "RESET");
 
 	return 0;
 }
