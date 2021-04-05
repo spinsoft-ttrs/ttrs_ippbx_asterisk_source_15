@@ -1471,7 +1471,7 @@ static char *app_pqm = "PauseQueueMember" ;
 
 static char *app_upqm = "UnpauseQueueMember" ;
 
-static char *app_sqm = "ResetLastcallQueueMember" ; //Add reset lastcall 9'TON
+static char *app_sqm = "ResetLastcallQueueMember" ; // Add reset lastcall 9'TON
 
 static char *app_ql = "QueueLog" ;
 
@@ -1805,8 +1805,9 @@ static void update_realtime_members(struct call_queue *q);
 static struct member *interface_exists(struct call_queue *q, const char *interface);
 static int set_member_paused(const char *queuename, const char *interface, const char *reason, int paused);
 
-//Add internal function reset member last call 9'TON
+// Add internal function reset member last call 9'TON
 static int set_member_reset_lastcall(const char *queuename, const char *interface);
+static int update_queue_reset_lastcall(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
 
 static int update_queue(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
 
@@ -5814,32 +5815,19 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	struct call_queue *qtmp;
 	struct ao2_iterator queue_iter;
 
-	//Debug
-	ast_log(LOG_WARNING, "DEBUG : update_queue #1 \n");
-
 	/* It is possible for us to be called when a call has already been considered terminated
 	 * and data updated, so to ensure we only act on the call that the agent is currently in
 	 * we check when the call was bridged.
 	 */
 	if (!starttime || (member->starttime != starttime)) {
-		//Debug
-	    ast_log(LOG_WARNING, "DEBUG : update_queue #2 \n");
 		return 0;
 	}
 
 	if (shared_lastcall) {
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : update_queue #3 \n");
-
 		queue_iter = ao2_iterator_init(queues, 0);
 		while ((qtmp = ao2_t_iterator_next(&queue_iter, "Iterate through queues"))) {
 			ao2_lock(qtmp);
-
-			//Debug
-			ast_log(LOG_WARNING, "DEBUG : update_queue #4 \n");
 			if ((mem = ao2_find(qtmp->members, member, OBJ_POINTER))) {
-				//Debug
-				ast_log(LOG_WARNING, "DEBUG : update_queue #5 \n");
 				time(&mem->lastcall);
 				mem->calls++;
 				mem->callcompletedinsl = 0;
@@ -5847,17 +5835,12 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 				mem->lastqueue = q;
 				ao2_ref(mem, -1);
 			}
-
-			//Debug
-			ast_log(LOG_WARNING, "DEBUG : update_queue #6 \n");
 			ao2_unlock(qtmp);
 			queue_t_unref(qtmp, "Done with iterator");
 		}
 		ao2_iterator_destroy(&queue_iter);
 	} else {
 		ao2_lock(q);
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : update_queue #7 \n");
 		time(&member->lastcall);
 		member->callcompletedinsl = 0;
 		member->calls++;
@@ -5870,35 +5853,91 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	 * this is the last chance to remove it from pending or subsequent
 	 * calls will not occur.
 	 */
-
-	//Debug
-	ast_log(LOG_WARNING, "DEBUG : update_queue #8 \n");
-
 	pending_members_remove(member);
 
 	ao2_lock(q);
 	q->callscompleted++;
 	if (callcompletedinsl) {
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : update_queue #9 \n");
 		q->callscompletedinsl++;
 	}
 	if (q->callscompleted == 1) {
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : update_queue #10 \n");
 		q->talktime = newtalktime;
 	} else {
 		/* Calculate talktime using the same exponential average as holdtime code */
 		oldtalktime = q->talktime;
 		q->talktime = (((oldtalktime << 2) - oldtalktime) + newtalktime) >> 2;
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : update_queue #11 \n");
 	}
 	ao2_unlock(q);
+	return 0;
+}
 
-	//Debug
-	ast_log(LOG_WARNING, "DEBUG : update_queue #12 \n");
+// Update queue reset last call
+/*!
+ * \brief update the queue status for reset last call
+ * \retval Always 0
+*/
+static int update_queue_reset_lastcall(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime)
+{
+	int oldtalktime;
+	int newtalktime = time(NULL) - starttime;
+	struct member *mem;
+	struct call_queue *qtmp;
+	struct ao2_iterator queue_iter;
 
+	/* It is possible for us to be called when a call has already been considered terminated
+	 * and data updated, so to ensure we only act on the call that the agent is currently in
+	 * we check when the call was bridged.
+	 */
+	//EDIT not check
+	/*if (!starttime || (member->starttime != starttime)) {
+		return 0;
+	}*/ 
+
+	if (shared_lastcall) {
+		queue_iter = ao2_iterator_init(queues, 0);
+		while ((qtmp = ao2_t_iterator_next(&queue_iter, "Iterate through queues"))) {
+			ao2_lock(qtmp);
+			if ((mem = ao2_find(qtmp->members, member, OBJ_POINTER))) {
+				time(&mem->lastcall);
+				mem->calls++;
+				mem->callcompletedinsl = 0;
+				mem->starttime = 0;
+				mem->lastqueue = q;
+				ao2_ref(mem, -1);
+			}
+			ao2_unlock(qtmp);
+			queue_t_unref(qtmp, "Done with iterator");
+		}
+		ao2_iterator_destroy(&queue_iter);
+	} else {
+		ao2_lock(q);
+		time(&member->lastcall);
+		member->callcompletedinsl = 0;
+		member->calls++;
+		member->starttime = 0;
+		member->lastqueue = q;
+		ao2_unlock(q);
+	}
+	/* Member might never experience any direct status change (local
+	 * channel with forwarding in particular). If that's the case,
+	 * this is the last chance to remove it from pending or subsequent
+	 * calls will not occur.
+	 */
+	pending_members_remove(member);
+
+	ao2_lock(q);
+	q->callscompleted++;
+	if (callcompletedinsl) {
+		q->callscompletedinsl++;
+	}
+	if (q->callscompleted == 1) {
+		q->talktime = newtalktime;
+	} else {
+		/* Calculate talktime using the same exponential average as holdtime code */
+		oldtalktime = q->talktime;
+		q->talktime = (((oldtalktime << 2) - oldtalktime) + newtalktime) >> 2;
+	}
+	ao2_unlock(q);
 	return 0;
 }
 
@@ -7700,7 +7739,7 @@ static int set_member_paused(const char *queuename, const char *interface, const
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
 
-//Add internal function reset member last call 9'TON
+// Add internal function reset member last call 9'TON
 
 /*!
  * \internal
@@ -7718,21 +7757,10 @@ static int set_member_reset_lastcall(const char *queuename, const char *interfac
 	queue_iter = ao2_iterator_init(queues, 0);
 	while ((q = ao2_t_iterator_next(&queue_iter, "Iterate over queues"))) {
 		ao2_lock(q);
-
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #1 \n");
-
 		if (ast_strlen_zero(queuename) || !strcasecmp(q->name, queuename)) {
 			struct member *mem;
 
-			//Debug
-			ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #2 \n");
-
 			if ((mem = interface_exists(q, interface))) {
-
-				//Debug
-				ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #3 \n");
-
 				++found;
 				if (found == 1
 					&& ast_strlen_zero(queuename)) {
@@ -7740,15 +7768,9 @@ static int set_member_reset_lastcall(const char *queuename, const char *interfac
 					 * XXX In all other cases, we use the queue name,
 					 * but since this affects all queues, we cannot.
 					 */
-
-					//Debug
-					ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #4 \n");
 				}
 
-				//Debug
-				ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #5 \n");
-
-				update_queue(q, mem, mem->callcompletedinsl, mem->starttime);
+				update_queue_reset_lastcall(q, mem, mem->callcompletedinsl, mem->starttime);
 				ao2_ref(mem, -1);
 			}
 
@@ -7759,16 +7781,10 @@ static int set_member_reset_lastcall(const char *queuename, const char *interfac
 			}
 		}
 
-		//Debug
-		ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #5 \n");
-
 		ao2_unlock(q);
 		queue_t_unref(q, "Done with iterator");
 	}
 	ao2_iterator_destroy(&queue_iter);
-
-	//Debug
-	ast_log(LOG_WARNING, "DEBUG : set_member_reset_lastcall #5 \n");
 
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
@@ -8137,7 +8153,8 @@ static int upqm_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-//Add ResetLastcallQueueMember 9'TON
+// Add ResetLastcallQueueMember 9'TON
+
 /*! \brief ResetLastcallQueueMember application */
 static int sqm_exec(struct ast_channel *chan, const char *data)
 {
@@ -8168,9 +8185,6 @@ static int sqm_exec(struct ast_channel *chan, const char *data)
 		pbx_builtin_setvar_helper(chan, "SQMSTATUS", "NOTFOUND");
 		return 0;
 	}
-
-	//Debug
-	ast_log(LOG_WARNING, "DEBUG : End ResetLastcallQueueMember \n");
 
 	pbx_builtin_setvar_helper(chan, "SQMSTATUS", "RESET");
 
