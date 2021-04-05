@@ -5878,8 +5878,6 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 */
 static int update_queue_last_current_time(struct call_queue *q, struct member *member)
 {
-	int oldtalktime;
-	int newtalktime = time(NULL) - starttime;
 	struct member *mem;
 	struct call_queue *qtmp;
 	struct ao2_iterator queue_iter;
@@ -8146,7 +8144,7 @@ static int slctqm_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if (set_member_last_current_time(args.queuename, args.interface)) {
-		ast_log(LOG_WARNING, "Attempt to reset last call interface %s, not found\n", args.interface);
+		ast_log(LOG_WARNING, "Attempt to Set last current time interface %s, not found\n", args.interface);
 		pbx_builtin_setvar_helper(chan, "SLCTQMSTATUS", "NOTFOUND");
 		return 0;
 	}
