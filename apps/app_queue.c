@@ -1471,7 +1471,7 @@ static char *app_pqm = "PauseQueueMember" ;
 
 static char *app_upqm = "UnpauseQueueMember" ;
 
-static char *app_slctqm = "SetLastCurrentTimeQueueMember" ; // Add Set last current time exec 9'TON
+static char *app_slctqm = "SetLastCurrentTimeQueueMember" ; // Add Set last current time exec
 
 static char *app_ql = "QueueLog" ;
 
@@ -1805,7 +1805,7 @@ static void update_realtime_members(struct call_queue *q);
 static struct member *interface_exists(struct call_queue *q, const char *interface);
 static int set_member_paused(const char *queuename, const char *interface, const char *reason, int paused);
 
-// Add internal function Set last current time 9'TON
+// Add internal function Set last current time
 static int set_member_last_current_time(const char *queuename, const char *interface);
 static int update_queue_last_current_time(struct call_queue *q, struct member *member);
 
@@ -5871,7 +5871,7 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	return 0;
 }
 
-// Update queue last current time 9'TON
+// Update queue last current time
 /*!
  * \brief update the queue status for last current time
  * \retval Always 0
@@ -7704,7 +7704,7 @@ static int set_member_paused(const char *queuename, const char *interface, const
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
 
-// Add internal function set member last current time 9'TON
+// Add internal function set member last current time
 
 /*!
  * \internal
@@ -8118,7 +8118,7 @@ static int upqm_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-// Add Application Set last current time exec 9'TON
+// Add Application Set last current time exec
 
 /*! \brief SetLastCurrentTimeQueueMember application */
 static int slctqm_exec(struct ast_channel *chan, const char *data)
@@ -11407,7 +11407,7 @@ static int unload_module(void)
 	ast_unregister_application(app_rqm);
 	ast_unregister_application(app_pqm);
 	ast_unregister_application(app_upqm);
-	ast_unregister_application(app_slctqm);//Add Application Set last current time 9'TON
+	ast_unregister_application(app_slctqm);// Add Application Set last current time
 	ast_unregister_application(app_ql);
 	ast_unregister_application(app_qupd);
 	ast_unregister_application(app);
@@ -11502,7 +11502,7 @@ static int load_module(void)
 	err |= ast_register_application_xml(app_rqm, rqm_exec);
 	err |= ast_register_application_xml(app_pqm, pqm_exec);
 	err |= ast_register_application_xml(app_upqm, upqm_exec);
-	err |= ast_register_application_xml(app_slctqm, slctqm_exec);//Add Set last current time exec 9'TON
+	err |= ast_register_application_xml(app_slctqm, slctqm_exec);// Add Set last current time exec
 	err |= ast_register_application_xml(app_ql, ql_exec);
 	err |= ast_register_application_xml(app_qupd, qupd_exec);
 	err |= ast_manager_register_xml("QueueStatus", 0, manager_queues_status);
