@@ -457,9 +457,9 @@
 			<ref type="function">QUEUE_MEMBER_PENALTY</ref>
 		</see-also>
 	</application>
-	<application name="ResetLastcallQueueMember" language="en_US">
+	<application name="SetLastCurrentTimeQueueMember" language="en_US">
 		<synopsis>
-			Reset lastcall a queue member.
+			Set last current time a queue member.
 		</synopsis>
 		<syntax>
 			<parameter name="queuename" />
@@ -470,16 +470,16 @@
 			</parameter>
 		</syntax>
 		<description>
-			<para>Rest Last call a queue member.</para>
+			<para>Set last current time a queue member.</para>
 			<para>This application sets the following channel variable upon completion:</para>
 			<variablelist>
-				<variable name="SQMSTATUS">
+				<variable name="SLCTQMSTATUS">
 					<para>The status of the attempt to pause a queue member as a text string.</para>
-					<value name="RESET" />
+					<value name="SETLASTCURRENTTIME" />
 					<value name="NOTFOUND" />
 				</variable>
 			</variablelist>
-			<para>Example: ResetLastcallQueueMember(,SIP/3000)</para>
+			<para>Example: SetLastCurrentTimeQueueMember(,SIP/3000)</para>
 		</description>
 		<see-also>
 			<ref type="application">Queue</ref>
@@ -488,7 +488,7 @@
 			<ref type="application">RemoveQueueMember</ref>
 			<ref type="application">PauseQueueMember</ref>
 			<ref type="application">UnpauseQueueMember</ref>
-            <ref type="application">ResetLastcallQueueMember</ref>
+            <ref type="application">SetLastCurrentTimeQueueMember</ref>
 			<ref type="function">QUEUE_VARIABLES</ref>
 			<ref type="function">QUEUE_MEMBER</ref>
 			<ref type="function">QUEUE_MEMBER_COUNT</ref>
@@ -1471,7 +1471,7 @@ static char *app_pqm = "PauseQueueMember" ;
 
 static char *app_upqm = "UnpauseQueueMember" ;
 
-static char *app_sqm = "ResetLastcallQueueMember" ; // Add reset lastcall 9'TON
+static char *app_slctqm = "SetLastCurrentTimeQueueMember" ; // Add Set last current time exec 9'TON
 
 static char *app_ql = "QueueLog" ;
 
@@ -1805,9 +1805,9 @@ static void update_realtime_members(struct call_queue *q);
 static struct member *interface_exists(struct call_queue *q, const char *interface);
 static int set_member_paused(const char *queuename, const char *interface, const char *reason, int paused);
 
-// Add internal function reset member last call 9'TON
-static int set_member_reset_lastcall(const char *queuename, const char *interface);
-static int update_queue_reset_lastcall(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
+// Add internal function Set last current time 9'TON
+static int set_member_last_current_time(const char *queuename, const char *interface);
+static int update_queue_last_current_time(struct call_queue *q, struct member *member);
 
 static int update_queue(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
 
@@ -5871,27 +5871,18 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	return 0;
 }
 
-// Update queue reset last call
+// Update queue last current time 9'TON
 /*!
- * \brief update the queue status for reset last call
+ * \brief update the queue status for last current time
  * \retval Always 0
 */
-static int update_queue_reset_lastcall(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime)
+static int update_queue_last_current_time(struct call_queue *q, struct member *member)
 {
 	int oldtalktime;
 	int newtalktime = time(NULL) - starttime;
 	struct member *mem;
 	struct call_queue *qtmp;
 	struct ao2_iterator queue_iter;
-
-	/* It is possible for us to be called when a call has already been considered terminated
-	 * and data updated, so to ensure we only act on the call that the agent is currently in
-	 * we check when the call was bridged.
-	 */
-	//EDIT not check
-	/*if (!starttime || (member->starttime != starttime)) {
-		return 0;
-	}*/ 
 
 	if (shared_lastcall) {
 		queue_iter = ao2_iterator_init(queues, 0);
@@ -5900,9 +5891,7 @@ static int update_queue_reset_lastcall(struct call_queue *q, struct member *memb
 			if ((mem = ao2_find(qtmp->members, member, OBJ_POINTER))) {
 				time(&mem->lastcall);
 				mem->calls++;
-				mem->callcompletedinsl = 0;
 				mem->starttime = 0;
-				mem->lastqueue = q;
 				ao2_ref(mem, -1);
 			}
 			ao2_unlock(qtmp);
@@ -5912,32 +5901,10 @@ static int update_queue_reset_lastcall(struct call_queue *q, struct member *memb
 	} else {
 		ao2_lock(q);
 		time(&member->lastcall);
-		member->callcompletedinsl = 0;
 		member->calls++;
 		member->starttime = 0;
-		member->lastqueue = q;
 		ao2_unlock(q);
 	}
-	/* Member might never experience any direct status change (local
-	 * channel with forwarding in particular). If that's the case,
-	 * this is the last chance to remove it from pending or subsequent
-	 * calls will not occur.
-	 */
-	pending_members_remove(member);
-
-	ao2_lock(q);
-	q->callscompleted++;
-	if (callcompletedinsl) {
-		q->callscompletedinsl++;
-	}
-	if (q->callscompleted == 1) {
-		q->talktime = newtalktime;
-	} else {
-		/* Calculate talktime using the same exponential average as holdtime code */
-		oldtalktime = q->talktime;
-		q->talktime = (((oldtalktime << 2) - oldtalktime) + newtalktime) >> 2;
-	}
-	ao2_unlock(q);
 	return 0;
 }
 
@@ -7739,16 +7706,16 @@ static int set_member_paused(const char *queuename, const char *interface, const
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
 
-// Add internal function reset member last call 9'TON
+// Add internal function set member last current time 9'TON
 
 /*!
  * \internal
- * \brief Reset member last call .
+ * \brief Set member last current time. 
  * \param[in] queuename If specified, only act on a member if it belongs to this queue
  * \param[in] interface Interface of queue member(s) having priority set.
  */
 
-static int set_member_reset_lastcall(const char *queuename, const char *interface)
+static int set_member_last_current_time(const char *queuename, const char *interface)
 {
 	int found = 0;
 	struct call_queue *q;
@@ -7770,7 +7737,7 @@ static int set_member_reset_lastcall(const char *queuename, const char *interfac
 					 */
 				}
 
-				update_queue_reset_lastcall(q, mem, mem->callcompletedinsl, mem->starttime);
+				update_queue_last_current_time(q, mem);
 				ao2_ref(mem, -1);
 			}
 
@@ -8153,21 +8120,19 @@ static int upqm_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-// Add ResetLastcallQueueMember 9'TON
+// Add Application Set last current time exec 9'TON
 
-/*! \brief ResetLastcallQueueMember application */
-static int sqm_exec(struct ast_channel *chan, const char *data)
+/*! \brief SetLastCurrentTimeQueueMember application */
+static int slctqm_exec(struct ast_channel *chan, const char *data)
 {
 	char *parse;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(queuename);
 		AST_APP_ARG(interface);
-		AST_APP_ARG(options);
-		AST_APP_ARG(reason);
 	);
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "ResetLastcallQueueMember requires an argument ([queuename],interface[,options][,reason])\n");
+		ast_log(LOG_WARNING, "SetLastCurrentTimeQueueMember requires an argument ([queuename],interface)\n");
 		return -1;
 	}
 
@@ -8176,17 +8141,17 @@ static int sqm_exec(struct ast_channel *chan, const char *data)
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	if (ast_strlen_zero(args.interface)) {
-		ast_log(LOG_WARNING, "Missing interface argument to ResetLastcallQueueMember ([queuename],interface[,options[,reason]])\n");
+		ast_log(LOG_WARNING, "Missing interface argument to SetLastCurrentTimeQueueMember ([queuename],interface])\n");
 		return -1;
 	}
 
-	if (set_member_reset_lastcall(args.queuename, args.interface)) {
+	if (set_member_last_current_time(args.queuename, args.interface)) {
 		ast_log(LOG_WARNING, "Attempt to reset last call interface %s, not found\n", args.interface);
-		pbx_builtin_setvar_helper(chan, "SQMSTATUS", "NOTFOUND");
+		pbx_builtin_setvar_helper(chan, "SLCTQMSTATUS", "NOTFOUND");
 		return 0;
 	}
 
-	pbx_builtin_setvar_helper(chan, "SQMSTATUS", "RESET");
+	pbx_builtin_setvar_helper(chan, "SLCTQMSTATUS", "SETLASTCURRENTTIME");
 
 	return 0;
 }
@@ -11444,7 +11409,7 @@ static int unload_module(void)
 	ast_unregister_application(app_rqm);
 	ast_unregister_application(app_pqm);
 	ast_unregister_application(app_upqm);
-	ast_unregister_application(app_sqm);//Add reset lastcall
+	ast_unregister_application(app_slctqm);//Add Application Set last current time 9'TON
 	ast_unregister_application(app_ql);
 	ast_unregister_application(app_qupd);
 	ast_unregister_application(app);
@@ -11539,7 +11504,7 @@ static int load_module(void)
 	err |= ast_register_application_xml(app_rqm, rqm_exec);
 	err |= ast_register_application_xml(app_pqm, pqm_exec);
 	err |= ast_register_application_xml(app_upqm, upqm_exec);
-	err |= ast_register_application_xml(app_sqm, sqm_exec);//Add reset lastcall
+	err |= ast_register_application_xml(app_slctqm, slctqm_exec);//Add Set last current time exec 9'TON
 	err |= ast_register_application_xml(app_ql, ql_exec);
 	err |= ast_register_application_xml(app_qupd, qupd_exec);
 	err |= ast_manager_register_xml("QueueStatus", 0, manager_queues_status);
