@@ -457,6 +457,48 @@
 			<ref type="function">QUEUE_MEMBER_PENALTY</ref>
 		</see-also>
 	</application>
+	<application name="SetLastCurrentTimeQueueMember" language="en_US">
+		<synopsis>
+			Set last current time a queue member.
+		</synopsis>
+		<syntax>
+			<parameter name="queuename" />
+			<parameter name="interface" required="true" />
+			<parameter name="options" />
+			<parameter name="reason">
+				<para>Is used to add extra information to the appropriate queue_log entries and manager events.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Set last current time a queue member.</para>
+			<para>This application sets the following channel variable upon completion:</para>
+			<variablelist>
+				<variable name="SLCTQMSTATUS">
+					<para>The status of the attempt to pause a queue member as a text string.</para>
+					<value name="SETLASTCURRENTTIME" />
+					<value name="NOTFOUND" />
+				</variable>
+			</variablelist>
+			<para>Example: SetLastCurrentTimeQueueMember(,SIP/3000)</para>
+		</description>
+		<see-also>
+			<ref type="application">Queue</ref>
+			<ref type="application">QueueLog</ref>
+			<ref type="application">AddQueueMember</ref>
+			<ref type="application">RemoveQueueMember</ref>
+			<ref type="application">PauseQueueMember</ref>
+			<ref type="application">UnpauseQueueMember</ref>
+            <ref type="application">SetLastCurrentTimeQueueMember</ref>
+			<ref type="function">QUEUE_VARIABLES</ref>
+			<ref type="function">QUEUE_MEMBER</ref>
+			<ref type="function">QUEUE_MEMBER_COUNT</ref>
+			<ref type="function">QUEUE_EXISTS</ref>
+			<ref type="function">QUEUE_GET_CHANNEL</ref>
+			<ref type="function">QUEUE_WAITING_COUNT</ref>
+			<ref type="function">QUEUE_MEMBER_LIST</ref>
+			<ref type="function">QUEUE_MEMBER_PENALTY</ref>
+		</see-also>
+	</application>
 	<application name="QueueLog" language="en_US">
 		<synopsis>
 			Writes to the queue_log file.
@@ -1429,6 +1471,8 @@ static char *app_pqm = "PauseQueueMember" ;
 
 static char *app_upqm = "UnpauseQueueMember" ;
 
+static char *app_slctqm = "SetLastCurrentTimeQueueMember" ; // Add Set last current time exec
+
 static char *app_ql = "QueueLog" ;
 
 static char *app_qupd = "QueueUpdate";
@@ -1760,6 +1804,11 @@ static struct ao2_container *queues;
 static void update_realtime_members(struct call_queue *q);
 static struct member *interface_exists(struct call_queue *q, const char *interface);
 static int set_member_paused(const char *queuename, const char *interface, const char *reason, int paused);
+
+// Add internal function Set last current time
+static int set_member_last_current_time(const char *queuename, const char *interface);
+static int update_queue_last_current_time(struct call_queue *q, struct member *member);
+
 static int update_queue(struct call_queue *q, struct member *member, int callcompletedinsl, time_t starttime);
 
 static struct member *find_member_by_queuename_and_interface(const char *queuename, const char *interface);
@@ -5822,6 +5871,39 @@ static int update_queue(struct call_queue *q, struct member *member, int callcom
 	return 0;
 }
 
+// Update queue last current time
+/*!
+ * \brief update the queue status for last current time
+ * \retval Always 0
+*/
+static int update_queue_last_current_time(struct call_queue *q, struct member *member)
+{
+	struct member *mem;
+	struct call_queue *qtmp;
+	struct ao2_iterator queue_iter;
+
+	if (shared_lastcall) {
+		queue_iter = ao2_iterator_init(queues, 0);
+		while ((qtmp = ao2_t_iterator_next(&queue_iter, "Iterate through queues"))) {
+			ao2_lock(qtmp);
+			if ((mem = ao2_find(qtmp->members, member, OBJ_POINTER))) {
+				time(&mem->lastcall);
+				mem->starttime = 0;
+				ao2_ref(mem, -1);
+			}
+			ao2_unlock(qtmp);
+			queue_t_unref(qtmp, "Done with iterator");
+		}
+		ao2_iterator_destroy(&queue_iter);
+	} else {
+		ao2_lock(q);
+		time(&member->lastcall);
+		member->starttime = 0;
+		ao2_unlock(q);
+	}
+	return 0;
+}
+
 /*! \brief Calculate the metric of each member in the outgoing callattempts
  *
  * A numeric metric is given to each member depending on the ring strategy used
@@ -7620,6 +7702,57 @@ static int set_member_paused(const char *queuename, const char *interface, const
 	return found ? RESULT_SUCCESS : RESULT_FAILURE;
 }
 
+// Add internal function set member last current time
+
+/*!
+ * \internal
+ * \brief Set member last current time. 
+ * \param[in] queuename If specified, only act on a member if it belongs to this queue
+ * \param[in] interface Interface of queue member(s) having priority set.
+ */
+
+static int set_member_last_current_time(const char *queuename, const char *interface)
+{
+	int found = 0;
+	struct call_queue *q;
+	struct ao2_iterator queue_iter;
+
+	queue_iter = ao2_iterator_init(queues, 0);
+	while ((q = ao2_t_iterator_next(&queue_iter, "Iterate over queues"))) {
+		ao2_lock(q);
+		if (ast_strlen_zero(queuename) || !strcasecmp(q->name, queuename)) {
+			struct member *mem;
+
+			if ((mem = interface_exists(q, interface))) {
+				++found;
+				if (found == 1
+					&& ast_strlen_zero(queuename)) {
+					/*
+					 * XXX In all other cases, we use the queue name,
+					 * but since this affects all queues, we cannot.
+					 */
+				}
+
+				update_queue_last_current_time(q, mem);
+				ao2_ref(mem, -1);
+			}
+
+			if (!ast_strlen_zero(queuename)) {
+				ao2_unlock(q);
+				queue_t_unref(q, "Done with iterator");
+				break;
+			}
+		}
+
+		ao2_unlock(q);
+		queue_t_unref(q, "Done with iterator");
+	}
+	ao2_iterator_destroy(&queue_iter);
+
+	return found ? RESULT_SUCCESS : RESULT_FAILURE;
+}
+
+
 /*!
  * \internal
  * \brief helper function for set_member_penalty - given a queue, sets all member penalties with the interface
@@ -7979,6 +8112,42 @@ static int upqm_exec(struct ast_channel *chan, const char *data)
 	}
 
 	pbx_builtin_setvar_helper(chan, "UPQMSTATUS", "UNPAUSED");
+
+	return 0;
+}
+
+// Add Application Set last current time exec
+
+/*! \brief SetLastCurrentTimeQueueMember application */
+static int slctqm_exec(struct ast_channel *chan, const char *data)
+{
+	char *parse;
+	AST_DECLARE_APP_ARGS(args,
+		AST_APP_ARG(queuename);
+		AST_APP_ARG(interface);
+	);
+
+	if (ast_strlen_zero(data)) {
+		ast_log(LOG_WARNING, "SetLastCurrentTimeQueueMember requires an argument ([queuename],interface)\n");
+		return -1;
+	}
+
+	parse = ast_strdupa(data);
+
+	AST_STANDARD_APP_ARGS(args, parse);
+
+	if (ast_strlen_zero(args.interface)) {
+		ast_log(LOG_WARNING, "Missing interface argument to SetLastCurrentTimeQueueMember ([queuename],interface])\n");
+		return -1;
+	}
+
+	if (set_member_last_current_time(args.queuename, args.interface)) {
+		ast_log(LOG_WARNING, "Attempt to Set last current time interface %s, not found\n", args.interface);
+		pbx_builtin_setvar_helper(chan, "SLCTQMSTATUS", "NOTFOUND");
+		return 0;
+	}
+
+	pbx_builtin_setvar_helper(chan, "SLCTQMSTATUS", "SETLASTCURRENTTIME");
 
 	return 0;
 }
@@ -11236,6 +11405,7 @@ static int unload_module(void)
 	ast_unregister_application(app_rqm);
 	ast_unregister_application(app_pqm);
 	ast_unregister_application(app_upqm);
+	ast_unregister_application(app_slctqm);// Add Application Set last current time
 	ast_unregister_application(app_ql);
 	ast_unregister_application(app_qupd);
 	ast_unregister_application(app);
@@ -11330,6 +11500,7 @@ static int load_module(void)
 	err |= ast_register_application_xml(app_rqm, rqm_exec);
 	err |= ast_register_application_xml(app_pqm, pqm_exec);
 	err |= ast_register_application_xml(app_upqm, upqm_exec);
+	err |= ast_register_application_xml(app_slctqm, slctqm_exec);// Add Set last current time exec
 	err |= ast_register_application_xml(app_ql, ql_exec);
 	err |= ast_register_application_xml(app_qupd, qupd_exec);
 	err |= ast_manager_register_xml("QueueStatus", 0, manager_queues_status);
