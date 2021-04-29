@@ -5888,6 +5888,7 @@ static int update_queue_last_current_time(struct call_queue *q, struct member *m
 			ao2_lock(qtmp);
 			if ((mem = ao2_find(qtmp->members, member, OBJ_POINTER))) {
 				time(&mem->lastcall);
+				if (mem->calls == 0) mem->calls++;
 				mem->starttime = 0;
 				ao2_ref(mem, -1);
 			}
@@ -5898,6 +5899,7 @@ static int update_queue_last_current_time(struct call_queue *q, struct member *m
 	} else {
 		ao2_lock(q);
 		time(&member->lastcall);
+		if (mem->calls == 0) mem->calls++;
 		member->starttime = 0;
 		ao2_unlock(q);
 	}
