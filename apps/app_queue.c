@@ -4053,37 +4053,27 @@ static int say_position(struct queue_ent *qe, int ringing)
 	int say_thanks = 1;
 	time_t now;
 
-	ast_verb(10, "[debug] 1 \n");
-
 	/* Let minannouncefrequency seconds pass between the start of each position announcement */
 	time(&now);
 	if ((now - qe->last_pos) < qe->parent->minannouncefrequency) {
 		return 0;
 	}
 
-	ast_verb(10, "[debug] 2 \n");
-
 	/* If either our position has changed, or we are over the freq timer, say position */
 	if ((qe->last_pos_said == qe->pos) && ((now - qe->last_pos) < qe->parent->announcefrequency)) {
 		return 0;
 	}
-
-	ast_verb(10, "[debug] 3 \n");
 
 	/* Only announce if the caller's queue position has improved since last time */
 	if (qe->parent->announceposition_only_up && qe->last_pos_said <= qe->pos) {
 		return 0;
 	}
 
-	ast_verb(10, "[debug] 4 \n");
-
 	if (ringing) {
 		ast_indicate(qe->chan,-1);
 	} else {
 		ast_moh_stop(qe->chan);
 	}
-
-	ast_verb(10, "[debug] 5 \n");
 
 	if (qe->parent->announceposition == ANNOUNCEPOSITION_YES ||
 		qe->parent->announceposition == ANNOUNCEPOSITION_MORE_THAN ||
@@ -4092,59 +4082,47 @@ static int say_position(struct queue_ent *qe, int ringing)
 			announceposition = 1;
 	}
 
-	ast_verb(10, "[debug] queue use_exsound=%d\n", use_exsound); 
 
 	if (announceposition == 1) {
 	    if(use_exsound){
-			ast_verb(10, "[debug] use_exsound OK \n"); 
 			switch(qe->pos){
 				case 1: 
-					ast_verb(10, "[debug] case 1 \n"); 
 					res = play_file_exsound(qe->chan, qe->parent->exsound_first);
-					//res = play_file_exsound(qe->chan, qe->parent->sound_thereare);
-					ast_verb(10, "[debug] case 1 Exit \n"); 
 					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_first);
 					say_thanks = 0;
 					break;
 				case 2: 
-					ast_verb(10, "[debug] case 2 \n"); 
 					res = play_file_exsound(qe->chan, qe->parent->exsound_second);
 					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_second);
 					say_thanks = 0;
 					break;
 				case 3: 
-					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
-					//res = play_file(qe->chan, qe->parent->exsound_third);
-					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+					res = play_file(qe->chan, qe->parent->exsound_third);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_third);
-					say_thanks = 0;*/
+					say_thanks = 0;
 					break;
 				case 4: 
-					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
-					//res = play_file(qe->chan, qe->parent->exsound_fourth);
-					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+					res = play_file(qe->chan, qe->parent->exsound_fourth);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_fourth);
-					say_thanks = 0;*/
+					say_thanks = 0;
 					break;
 				case 5: 
-					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
-					//res = play_file(qe->chan, qe->parent->exsound_fifth);
-					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+					res = play_file(qe->chan, qe->parent->exsound_fifth);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_fifth);
-					say_thanks = 0;*/
+					say_thanks = 0;
 					break;
 				default: 
-					res = ast_say_number(qe->chan, qe->parent->announcepositionlimit, AST_DIGIT_ANY, ast_channel_language(qe->chan), NULL);
-					//res = play_file(qe->chan, qe->parent->exsound_more_than_fifth);
-					/*ast_verb(10, "Told %s, pos=%d, say=%s\n",
+					res = play_file(qe->chan, qe->parent->exsound_more_than_fifth);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_more_than_fifth);
-					say_thanks = 0;*/
+					say_thanks = 0;
 			}
-			ast_verb(10, "[debug] use_exsound Exit switch\n"); 
 			if (res) {
-					ast_verb(10, "[debug] playout\n"); 
 					goto playout;
 			}
 			goto posout;
