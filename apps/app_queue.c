@@ -1727,8 +1727,16 @@ struct call_queue {
  		AST_STRING_FIELD(exsound_fourth); 
  		/*! Extra Sound file: Your call is now fifth in line (def. exsound_fifth) */ 
  		AST_STRING_FIELD(exsound_fifth); 
+		/*! Extra Sound file: Your call is now sixth in line (def. exsound_sixth) */ 
+ 		AST_STRING_FIELD(exsound_sixth); 
+		/*! Extra Sound file: Your call is now seventh in line (def. exsound_seventh) */ 
+ 		AST_STRING_FIELD(exsound_seventh); 
+		/*! Extra Sound file: Your call is now eighth in line (def. exsound_eighth) */ 
+ 		AST_STRING_FIELD(exsound_eighth); 
  		/*! Extra Sound file: Your call is now more than fifth in line (def. exsound_more_than_fifth) */ 
  		AST_STRING_FIELD(exsound_more_than_fifth); 
+		/*! Extra Sound file: Your call is now more than eighth in line (def. exsound_more_than_eighth) */ 
+ 		AST_STRING_FIELD(exsound_more_than_eighth); 
 	);
 	/*! Sound files: Custom announce, no default */
 	struct ast_str *sound_periodicannounce[MAX_PERIODIC_ANNOUNCEMENTS];
@@ -2856,7 +2864,12 @@ static void init_queue(struct call_queue *q)
  	ast_string_field_set(q, exsound_third, "exsound_third"); 
  	ast_string_field_set(q, exsound_fourth, "exsound_fourth"); 
  	ast_string_field_set(q, exsound_fifth, "exsound_fifth"); 
+
+	ast_string_field_set(q, exsound_sixth, "exsound_sixth"); 
+	ast_string_field_set(q, exsound_seventh, "exsound_seventh"); 
+	ast_string_field_set(q, exsound_eighth, "exsound_eighth"); 
  	ast_string_field_set(q, exsound_more_than_fifth, "exsound_more_than_fifth"); 
+	ast_string_field_set(q, exsound_more_than_eighth, "exsound_more_than_eighth"); 
 
 	if (!q->sound_periodicannounce[0]) {
 		q->sound_periodicannounce[0] = ast_str_create(32);
@@ -3231,8 +3244,16 @@ static void queue_set_param(struct call_queue *q, const char *param, const char 
  		ast_string_field_set(q, exsound_fourth, val); 
  	} else if (!strcasecmp(param, "exsound_fifth")) { 
  		ast_string_field_set(q, exsound_fifth, val); 
+	} else if (!strcasecmp(param, "exsound_sixth")) { 
+ 		ast_string_field_set(q, exsound_sixth, val); 
+	} else if (!strcasecmp(param, "exsound_seventh")) { 
+ 		ast_string_field_set(q, exsound_seventh, val); 
+	} else if (!strcasecmp(param, "exsound_eighth")) { 
+ 		ast_string_field_set(q, exsound_eighth, val); 
  	} else if (!strcasecmp(param, "exsound_more_than_fifth")) { 
  		ast_string_field_set(q, exsound_more_than_fifth, val); 
+	} else if (!strcasecmp(param, "exsound_more_than_eighth")) { 
+ 		ast_string_field_set(q, exsound_more_than_eighth, val); 
 	} else if (!strcasecmp(param, "announce-to-first-user")) {
 		q->announce_to_first_user = ast_true(val);
 	} else if (!strcasecmp(param, "min-announce-frequency")) {
@@ -4116,10 +4137,28 @@ static int say_position(struct queue_ent *qe, int ringing)
 						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_fifth);
 					say_thanks = 0;
 					break;
-				default: 
-					res = play_file(qe->chan, qe->parent->exsound_more_than_fifth);
+				case 6: 
+					res = play_file(qe->chan, qe->parent->exsound_sixth);
 					ast_verb(10, "Told %s, pos=%d, say=%s\n",
-						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_more_than_fifth);
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_sixth);
+					say_thanks = 0;
+					break;
+				case 7: 
+					res = play_file(qe->chan, qe->parent->exsound_seventh);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_seventh);
+					say_thanks = 0;
+					break;
+				case 8: 
+					res = play_file(qe->chan, qe->parent->exsound_eighth);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_eighth);
+					say_thanks = 0;
+					break;
+				default: 
+					res = play_file(qe->chan, qe->parent->exsound_more_than_eighth);
+					ast_verb(10, "Told %s, pos=%d, say=%s\n",
+						ast_channel_name(qe->chan), qe->pos,qe->parent->exsound_more_than_eighth);
 					say_thanks = 0;
 			}
 			if (res) {
